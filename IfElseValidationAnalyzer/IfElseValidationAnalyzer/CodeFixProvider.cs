@@ -12,6 +12,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Rename;
 using Microsoft.CodeAnalysis.Text;
+using Microsoft.CodeAnalysis.Formatting;
 
 namespace IfElseValidationAnalyzer
 {
@@ -40,34 +41,42 @@ namespace IfElseValidationAnalyzer
             var diagnosticSpan = diagnostic.Location.SourceSpan;
 
             // Find the type declaration identified by the diagnostic.
-            var declaration = root.FindToken(diagnosticSpan.Start).Parent.AncestorsAndSelf().OfType<TypeDeclarationSyntax>().First();
+            var declaration = root.FindToken(diagnosticSpan.Start).Parent.AncestorsAndSelf().OfType<IfStatementSyntax>().First();
 
             // Register a code action that will invoke the fix.
             context.RegisterCodeFix(
                 CodeAction.Create(
                     title: title,
-                    createChangedSolution: c => MakeUppercaseAsync(context.Document, declaration, c),
+                    createChangedDocument: c => RemoveElseInGuardValidation(context.Document, declaration, c),
                     equivalenceKey: title),
                 diagnostic);
         }
 
-        private async Task<Solution> MakeUppercaseAsync(Document document, TypeDeclarationSyntax typeDecl, CancellationToken cancellationToken)
+        private async Task<Document> RemoveElseInGuardValidation(Document document, IfStatementSyntax declaration, CancellationToken cancellationToken)
         {
-            // Compute new uppercase name.
-            var identifierToken = typeDecl.Identifier;
-            var newName = identifierToken.Text.ToUpperInvariant();
+            var ifStatement = declaration as IfStatementSyntax;
+           
+            //We need to get the parent because we need to replace the entire block
+            var blockSyntax = ifStatement.Parent as BlockSyntax;
+            var blockElseStatement = ifStatement.Else.Statement as BlockSyntax;
+            
+            //Build the new if statement without the else condition
+            var newIfStatement = SyntaxFactory.IfStatement(
+                condition: ifStatement.Condition,
+                statement: ifStatement.Statement);
 
-            // Get the symbol representing the type to be renamed.
-            var semanticModel = await document.GetSemanticModelAsync(cancellationToken);
-            var typeSymbol = semanticModel.GetDeclaredSymbol(typeDecl, cancellationToken);
+            //Create the new block with the if and the statements that were inside of the else block
+            var newBlockSyntax = SyntaxFactory.Block()
+                .AddStatements(newIfStatement)
+                .AddStatements(blockElseStatement.Statements.ToArray());
 
-            // Produce a new solution that has all references to that type renamed, including the declaration.
-            var originalSolution = document.Project.Solution;
-            var optionSet = originalSolution.Workspace.Options;
-            var newSolution = await Renamer.RenameSymbolAsync(document.Project.Solution, typeSymbol, newName, optionSet, cancellationToken).ConfigureAwait(false);
+            //Replace it in the document
+            var root = await document.GetSyntaxRootAsync(cancellationToken).ConfigureAwait(false);
 
-            // Return the new solution with the now-uppercase type name.
-            return newSolution;
+            var newRoot = root.ReplaceNode(blockSyntax, newBlockSyntax)
+                .WithAdditionalAnnotations(Formatter.Annotation);
+            
+            return document.WithSyntaxRoot(newRoot);
         }
     }
 }

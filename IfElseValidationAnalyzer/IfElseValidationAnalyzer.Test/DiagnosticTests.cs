@@ -127,7 +127,6 @@ namespace IfElseValidationAnalyzer.Test
             VerifyCSharpDiagnostic(test);
         }
 
-
         protected override CodeFixProvider GetCSharpCodeFixProvider()
         {
             return new IfElseValidationAnalyzerCodeFixProvider();
