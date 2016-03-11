@@ -93,8 +93,8 @@ namespace ConsoleApplication1
             else
             {
                 Console.WriteLine(args.Count);
-                bool isValid = CheckIfItIsValid(args.Count);
             }
+            bool isValid = CheckIfItIsValid(args.Count);
         }
     }
 }";

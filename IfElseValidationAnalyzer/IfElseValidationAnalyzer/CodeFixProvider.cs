@@ -40,22 +40,20 @@ namespace IfElseValidationAnalyzer
             var diagnostic = context.Diagnostics.First();
             var diagnosticSpan = diagnostic.Location.SourceSpan;
 
-            // Find the type declaration identified by the diagnostic.
-            var declaration = root.FindToken(diagnosticSpan.Start).Parent.AncestorsAndSelf().OfType<IfStatementSyntax>().First();
+            // Find the if statement identified by the diagnostic.
+            var ifStatement = root.FindToken(diagnosticSpan.Start).Parent.AncestorsAndSelf().OfType<IfStatementSyntax>().First();
 
             // Register a code action that will invoke the fix.
             context.RegisterCodeFix(
                 CodeAction.Create(
                     title: title,
-                    createChangedDocument: c => RemoveElseInGuardValidation(context.Document, declaration, c),
+                    createChangedDocument: c => RemoveElseInGuardValidation(context.Document, ifStatement, c),
                     equivalenceKey: title),
                 diagnostic);
         }
 
-        private async Task<Document> RemoveElseInGuardValidation(Document document, IfStatementSyntax declaration, CancellationToken cancellationToken)
+        private async Task<Document> RemoveElseInGuardValidation(Document document, IfStatementSyntax ifStatement, CancellationToken cancellationToken)
         {
-            var ifStatement = declaration as IfStatementSyntax;
-           
             //We need to get the parent because we need to replace the entire block
             var blockSyntax = ifStatement.Parent as BlockSyntax;
             var blockElseStatement = ifStatement.Else.Statement as BlockSyntax;
@@ -65,10 +63,14 @@ namespace IfElseValidationAnalyzer
                 condition: ifStatement.Condition,
                 statement: ifStatement.Statement);
 
+            //Create an aux block
+            var auxBlock = blockSyntax.RemoveNode(ifStatement, SyntaxRemoveOptions.KeepNoTrivia);
+
             //Create the new block with the if and the statements that were inside of the else block
             var newBlockSyntax = SyntaxFactory.Block()
                 .AddStatements(newIfStatement)
-                .AddStatements(blockElseStatement.Statements.ToArray());
+                .AddStatements(blockElseStatement.Statements.ToArray())
+                .AddStatements(auxBlock.Statements.ToArray());
 
             //Replace it in the document
             var root = await document.GetSyntaxRootAsync(cancellationToken).ConfigureAwait(false);
